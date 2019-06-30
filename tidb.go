@@ -45,10 +45,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func main() {
-
-}
-
 // TiDBServer ...
 type TiDBServer struct {
 	cfg     *config.Config
