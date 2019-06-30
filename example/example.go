@@ -12,13 +12,13 @@
 package example
 
 import (
-	"fmt"
 	"context"
 	"database/sql"
+	"fmt"
 
+	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
-	"github.com/pingcap/errors"
 )
 
 // GetRowCount returns row count of the table.
