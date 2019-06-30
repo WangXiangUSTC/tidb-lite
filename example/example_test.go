@@ -12,13 +12,13 @@
 package example
 
 import (
-	"testing"
-	"time"
 	"context"
 	"database/sql"
+	"testing"
+	"time"
 
-	. "github.com/pingcap/check"
 	tidblite "github.com/WangXiangUSTC/tidb-lite"
+	. "github.com/pingcap/check"
 )
 
 func TestClient(t *testing.T) {
@@ -35,10 +35,10 @@ func (t *testExampleSuite) TestGetRowCount(c *C) {
 	defer tidbServer.Close()
 
 	var dbConn *sql.DB
-	for i := 0; i< 5; i++ {
+	for i := 0; i < 5; i++ {
 		dbConn, err = tidbServer.CreateConn()
 		if err != nil {
-			time.Sleep(100*time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 	c.Assert(err, IsNil)
@@ -52,7 +52,7 @@ func (t *testExampleSuite) TestGetRowCount(c *C) {
 	c.Assert(err, IsNil)
 	_, err = dbConn.ExecContext(ctx, "insert into example_test.t values(1, 'a'),(2, 'b'),(3, 'c')")
 	c.Assert(err, IsNil)
-	
+
 	count, err := GetRowCount(ctx, dbConn, "example_test", "t", "id > 2")
 	c.Assert(err, IsNil)
 	c.Assert(count, Equals, int64(1))
