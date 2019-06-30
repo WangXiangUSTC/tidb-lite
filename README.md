@@ -2,7 +2,7 @@
 
 [English README](./README_EN.md)
 
-tidb-lite 是一个库，可以方便地使用该库在 golang 应用或者单元测试中使用 `mocktikv` 模式的 TiDB。
+tidb-lite 是一个库，可以方便地使用该库在 golang 应用或者单元测试中创建 `mocktikv` 模式的 TiDB。
 
 ## 提供的接口
 
