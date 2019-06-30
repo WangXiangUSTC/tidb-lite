@@ -34,6 +34,7 @@ func NewOptions(dataDir string) *Options {
 }
 
 // WithPort set the port
-func (o *Options) WithPort(port int) {
+func (o *Options) WithPort(port int) *Options {
 	o.Port = port
+	return o
 }
