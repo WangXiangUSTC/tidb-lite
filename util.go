@@ -11,29 +11,20 @@
 
 package tidblite
 
-import ()
+import (
+	"time"
 
-const (
-	// DefaultPort is the default port to use
-	DefaultPort = 4040
+	"github.com/pingcap/errors"
 )
 
-type Options struct {
-	// DataDir is the directory to save db data
-	DataDir string
-
-	Port int
-}
-
-// NewOptions creates a new Options with default port
-func NewOptions(dataDir string) *Options {
-	return &Options{
-		DataDir: dataDir,
-		Port:    DefaultPort,
+// parseDuration parses lease argument string.
+func parseDuration(lease string) (time.Duration, error) {
+	dur, err := time.ParseDuration(lease)
+	if err != nil {
+		dur, err = time.ParseDuration(lease + "s")
 	}
-}
-
-// WithPort set the port
-func (o *Options) WithPort(port int) {
-	o.Port = port
+	if err != nil || dur < 0 {
+		return dur, errors.Errorf("invalid lease duration %s", lease)
+	}
+	return dur, nil
 }

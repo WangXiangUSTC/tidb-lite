@@ -9,89 +9,105 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package tidblite
 
 import (
-	"fmt"
-	"sync/atomic"
-	"os"
-	"runtime"
 	"context"
+	"database/sql"
+	"fmt"
+	"runtime"
 	"strconv"
+	"sync/atomic"
 
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
-	"github.com/pingcap/tidb/statistics"
-	"github.com/pingcap/tidb/store/tikv"
+	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/bindinfo"
+	"github.com/pingcap/tidb/config"
+	"github.com/pingcap/tidb/ddl"
+	"github.com/pingcap/tidb/domain"
+	"github.com/pingcap/tidb/kv"
 	plannercore "github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/privilege/privileges"
 	"github.com/pingcap/tidb/server"
-	"github.com/pingcap/tidb/config"
-	"github.com/pingcap/tidb/kv"
-	"github.com/pingcap/tidb/domain"
-	"github.com/pingcap/errors"
-	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/session"
-	"github.com/pingcap/tidb/store/mockstore"
-	"github.com/pingcap/tidb/store/tikv/gcworker"
-	"github.com/pingcap/tidb/ddl"
+	"github.com/pingcap/tidb/sessionctx/variable"
+	"github.com/pingcap/tidb/statistics"
 	"github.com/pingcap/tidb/statistics/handle"
-	"github.com/pingcap/tidb/bindinfo"
-	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/tidb/util/logutil"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/pingcap/parser/terror"
-	"github.com/pingcap/tidb/util/printer"
 	kvstore "github.com/pingcap/tidb/store"
+	"github.com/pingcap/tidb/store/mockstore"
+	"github.com/pingcap/tidb/store/tikv"
+	"github.com/pingcap/tidb/store/tikv/gcworker"
+	"github.com/pingcap/tidb/util/logutil"
+	"github.com/pingcap/tidb/util/memory"
+	"github.com/pingcap/tidb/util/printer"
 	"go.uber.org/zap"
 )
 
+func main() {
+
+}
+
 // TiDBServer ...
 type TiDBServer struct {
-	//cfg *Options
-
-	cfg      *config.Config
-	svr      *server.Server
-	storage  kv.Storage
-	dom      *domain.Domain
+	cfg     *config.Config
+	svr     *server.Server
+	storage kv.Storage
+	dom     *domain.Domain
 
 	closeGracefully bool
 }
 
 // NewTiDBServer returns a new TiDBServer
-func NewTiDBServer(options *Options) *TiDBServer {
-	
-	//configWarning := loadConfig()
+func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	cfg := config.GetGlobalConfig()
 	cfg.Store = "mocktikv"
 	cfg.Path = options.DataDir
 	cfg.Port = uint(options.Port)
-
-	//overrideConfig()
 	if err := cfg.Valid(); err != nil {
-		fmt.Fprintln(os.Stderr, "invalid config", err)
-		os.Exit(1)
+		return nil, errors.Annotatef(err, "invalid config")
 	}
-	tidbServer := &TiDBServer {
+
+	tidbServer := &TiDBServer{
 		cfg: cfg,
 	}
 
-	tidbServer.registerStores()
-	tidbServer.setGlobalVars()
-	tidbServer.setupLog()
-	
+	if err := tidbServer.registerStores(); err != nil {
+		return nil, err
+	}
+	if err := tidbServer.setGlobalVars(); err != nil {
+		return nil, err
+	}
+	if err := tidbServer.setupLog(); err != nil {
+		return nil, err
+	}
 	tidbServer.printInfo()
-	tidbServer.createStoreAndDomain()
-	tidbServer.createServer()
-	//signal.SetupSignalHandler(serverShutdown)
-	
+	if err := tidbServer.createStoreAndDomain(); err != nil {
+		return nil, err
+	}
+	if err := tidbServer.createServer(); err != nil {
+		return nil, err
+	}
 
 	go func() {
-		tidbServer.runServer()
+		if err := tidbServer.runServer(); err != nil {
+			log.Error("tidb lite run server failed", zap.Error(err))
+		}
 		tidbServer.cleanup(tidbServer.closeGracefully)
 	}()
-	
-	return tidbServer
+
+	return tidbServer, nil
+}
+
+func (t *TiDBServer) CreateConn() (*sql.DB, error) {
+	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4", "root", "", "127.0.0.1", t.cfg.Port)
+	dbConn, err := sql.Open("mysql", dbDSN)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	return dbConn, nil
 }
 
 func (t *TiDBServer) Close() {
@@ -110,45 +126,66 @@ func (t *TiDBServer) printInfo() {
 	log.SetLevel(level)
 }
 
-func (t *TiDBServer) registerStores() {
-	err := kvstore.Register("tikv", tikv.Driver{})
-	terror.MustNil(err)
+func (t *TiDBServer) registerStores() error {
+	if err := kvstore.Register("tikv", tikv.Driver{}); err != nil {
+		return err
+	}
 	tikv.NewGCHandlerFunc = gcworker.NewGCWorker
-	err = kvstore.Register("mocktikv", mockstore.MockDriver{})
-	terror.MustNil(err)
+	return kvstore.Register("mocktikv", mockstore.MockDriver{})
 }
 
-func (t *TiDBServer) createServer() {
+func (t *TiDBServer) createServer() error {
 	driver := server.NewTiDBDriver(t.storage)
 	var err error
 	t.svr, err = server.NewServer(t.cfg, driver)
-	// Both domain and storage have started, so we have to clean them before exiting.
-	terror.MustNil(err, t.closeDomainAndStorage)
+	if err != nil {
+		// Both domain and storage have started, so we have to clean them before exiting.
+		t.closeDomainAndStorage()
+		return err
+	}
+
 	go t.dom.ExpensiveQueryHandle().SetSessionManager(t.svr).Run()
+	return nil
 }
 
-func (t *TiDBServer) runServer() {
-	err := t.svr.Run()
-	terror.MustNil(err)
+func (t *TiDBServer) runServer() error {
+	return t.svr.Run()
 }
 
-func (t *TiDBServer) createStoreAndDomain() {
+func (t *TiDBServer) createStoreAndDomain() error {
 	fullPath := fmt.Sprintf("%s://%s", t.cfg.Store, t.cfg.Path)
 	var err error
 	t.storage, err = kvstore.New(fullPath)
-	terror.MustNil(err)
+	if err != nil {
+		return err
+	}
 	// Bootstrap a session to load information schema.
 	t.dom, err = session.BootstrapSession(t.storage)
-	terror.MustNil(err)
+	if err != nil {
+		if err1 := t.storage.Close(); err1 != nil {
+			log.Error("close tidb lite's storage failed", zap.Error(err1))
+		}
+		return err
+	}
+	return nil
 }
 
-func (t *TiDBServer) setGlobalVars() {
-	ddlLeaseDuration := parseDuration(t.cfg.Lease)
+func (t *TiDBServer) setGlobalVars() error {
+	ddlLeaseDuration, err := parseDuration(t.cfg.Lease)
+	if err != nil {
+		return err
+	}
 	session.SetSchemaLease(ddlLeaseDuration)
 	runtime.GOMAXPROCS(int(t.cfg.Performance.MaxProcs))
-	statsLeaseDuration := parseDuration(t.cfg.Performance.StatsLease)
+	statsLeaseDuration, err := parseDuration(t.cfg.Performance.StatsLease)
+	if err != nil {
+		return err
+	}
 	session.SetStatsLease(statsLeaseDuration)
-	bindinfo.Lease = parseDuration(t.cfg.Performance.BindInfoLease)
+	bindinfo.Lease, err = parseDuration(t.cfg.Performance.BindInfoLease)
+	if err != nil {
+		return err
+	}
 	domain.RunAutoAnalyze = t.cfg.Performance.RunAutoAnalyze
 	statistics.FeedbackProbability.Store(t.cfg.Performance.FeedbackProbability)
 	handle.MaxQueryFeedbackCount.Store(int64(t.cfg.Performance.QueryFeedbackLimit))
@@ -183,14 +220,26 @@ func (t *TiDBServer) setGlobalVars() {
 		}
 		plannercore.PreparedPlanCacheMaxMemory.Store(t.cfg.Performance.MaxMemory)
 		total, err := memory.MemTotal()
-		terror.MustNil(err)
+		if err != nil {
+			return err
+		}
 		if plannercore.PreparedPlanCacheMaxMemory.Load() > total || plannercore.PreparedPlanCacheMaxMemory.Load() <= 0 {
 			plannercore.PreparedPlanCacheMaxMemory.Store(total)
 		}
 	}
+	commitMaxBackoff, err := parseDuration(t.cfg.TiKVClient.CommitTimeout)
+	if err != nil {
+		return err
+	}
+	tikv.CommitMaxBackoff = int(commitMaxBackoff.Seconds() * 1000)
 
-	tikv.CommitMaxBackoff = int(parseDuration(t.cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
-	tikv.PessimisticLockTTL = uint64(parseDuration(t.cfg.PessimisticTxn.TTL).Seconds() * 1000)
+	pessimisticLockTTL, err := parseDuration(t.cfg.PessimisticTxn.TTL)
+	if err != nil {
+		return err
+	}
+	tikv.PessimisticLockTTL = uint64(pessimisticLockTTL.Seconds() * 1000)
+
+	return nil
 }
 
 func (t *TiDBServer) serverShutdown(isgraceful bool) {
@@ -201,8 +250,9 @@ func (t *TiDBServer) serverShutdown(isgraceful bool) {
 func (t *TiDBServer) closeDomainAndStorage() {
 	atomic.StoreUint32(&tikv.ShuttingDown, 1)
 	t.dom.Close()
-	err := t.storage.Close()
-	terror.Log(errors.Trace(err))
+	if err := t.storage.Close(); err != nil {
+		log.Error("close tidb lite's storage failed", zap.Error(err))
+	}
 }
 
 func (t *TiDBServer) cleanup(graceful bool) {
@@ -215,10 +265,14 @@ func (t *TiDBServer) cleanup(graceful bool) {
 	t.closeDomainAndStorage()
 }
 
-func (t *TiDBServer) setupLog() {
-	err := logutil.InitZapLogger(t.cfg.Log.ToLogConfig())
-	terror.MustNil(err)
+func (t *TiDBServer) setupLog() error {
+	if err := logutil.InitZapLogger(t.cfg.Log.ToLogConfig()); err != nil {
+		return err
+	}
 
-	err = logutil.InitLogger(t.cfg.Log.ToLogConfig())
-	terror.MustNil(err)
+	if err := logutil.InitLogger(t.cfg.Log.ToLogConfig()); err != nil {
+		return err
+	}
+
+	return nil
 }
