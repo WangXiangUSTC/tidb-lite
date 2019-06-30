@@ -5,15 +5,19 @@ tidb-lite is a package, we can use this package to create a TiDB server with `mo
 ## Interface
 
 - func NewTiDBServer(options *Options) (*TiDBServer, error)
+  
   Create a TiDB Server, can use options to set the path which used to save db's data and this server's port.
 
 - func (t *TiDBServer) CreateConn() (*sql.DB, error)
+  
   Create a database connection.
 
 - func (t *TiDBServer) Close()
+  
   Close TiDB Server.
 
 - func (t *TiDBServer) CloseGracefully()
+  
   Close TiDB server gracefully.
 
 ## Example
@@ -26,17 +30,17 @@ In [example_test.go](./example/example_test.go) use code below to create a TiDB 
 
 ```
 tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()).WithPort(4040))
-	c.Assert(err, IsNil)
-	defer tidbServer.Close()
+c.Assert(err, IsNil)
+defer tidbServer.Close()
 
-	var dbConn *sql.DB
-	for i := 0; i< 5; i++ {
-		dbConn, err = tidbServer.CreateConn()
-		if err != nil {
-			time.Sleep(100*time.Millisecond)
-		}
+var dbConn *sql.DB
+for i := 0; i< 5; i++ {
+	dbConn, err = tidbServer.CreateConn()
+	if err != nil {
+		time.Sleep(100*time.Millisecond)
 	}
-	c.Assert(err, IsNil)
+}
+c.Assert(err, IsNil)
 ```
 
 And then we can use the `dbConn` to generate test data, and then check function `GetRowCount`'s correctness.
