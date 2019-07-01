@@ -38,7 +38,9 @@ for i := 0; i< 5; i++ {
 	dbConn, err = tidbServer.CreateConn()
 	if err != nil {
 		time.Sleep(100*time.Millisecond)
+        continue
 	}
+    break
 }
 c.Assert(err, IsNil)
 ```
