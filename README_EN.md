@@ -34,13 +34,13 @@ c.Assert(err, IsNil)
 defer tidbServer.Close()
 
 var dbConn *sql.DB
-for i := 0; i< 5; i++ {
+for i := 0; i < 5; i++ {
 	dbConn, err = tidbServer.CreateConn()
 	if err != nil {
-		time.Sleep(100*time.Millisecond)
-        continue
+		time.Sleep(100 * time.Millisecond)
+		continue
 	}
-    break
+	break
 }
 c.Assert(err, IsNil)
 ```
