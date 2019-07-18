@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -45,6 +46,12 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	// singleton instance
+	tidbServer *TiDBServer
+	mu         sync.Mutex
+)
+
 // TiDBServer ...
 type TiDBServer struct {
 	cfg     *config.Config
@@ -57,6 +64,14 @@ type TiDBServer struct {
 
 // NewTiDBServer returns a new TiDBServer
 func NewTiDBServer(options *Options) (*TiDBServer, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if tidbServer != nil {
+		log.Warn("already had one tidb server")
+		return tidbServer, nil
+	}
+
 	cfg := config.GetGlobalConfig()
 	cfg.Store = "mocktikv"
 	cfg.Path = options.DataDir
@@ -65,7 +80,7 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 		return nil, errors.Annotatef(err, "invalid config")
 	}
 
-	tidbServer := &TiDBServer{
+	tidbServer = &TiDBServer{
 		cfg: cfg,
 	}
 
