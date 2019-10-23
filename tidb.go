@@ -287,3 +287,9 @@ func (t *TiDBServer) setupLog() error {
 
 	return nil
 }
+
+func DestoryTiDBServer(t *TiDBServer) {
+	t.closeDomainAndStorage()
+	t.CloseGracefully()
+	tidbServer = nil
+}
