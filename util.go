@@ -12,10 +12,10 @@
 package tidblite
 
 import (
-	"go.uber.org/zap"
 	"time"
 
 	"github.com/pingcap/log"
+	"go.uber.org/zap"
 )
 
 // parseDuration parses lease argument string.
