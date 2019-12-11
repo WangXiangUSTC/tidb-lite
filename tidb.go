@@ -15,11 +15,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"runtime"
-	"strconv"
-	"sync"
-	"sync/atomic"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
@@ -46,6 +41,10 @@ import (
 	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/util/printer"
 	"go.uber.org/zap"
+	"runtime"
+	"strconv"
+	"sync"
+	"sync/atomic"
 )
 
 var (
@@ -184,21 +183,12 @@ func (t *TiDBServer) createStoreAndDomain() error {
 }
 
 func (t *TiDBServer) setGlobalVars() error {
-	ddlLeaseDuration, err := parseDuration(t.cfg.Lease)
-	if err != nil {
-		return err
-	}
+	ddlLeaseDuration := parseDuration(t.cfg.Lease)
 	session.SetSchemaLease(ddlLeaseDuration)
 	runtime.GOMAXPROCS(int(t.cfg.Performance.MaxProcs))
-	statsLeaseDuration, err := parseDuration(t.cfg.Performance.StatsLease)
-	if err != nil {
-		return err
-	}
+	statsLeaseDuration := parseDuration(t.cfg.Performance.StatsLease)
 	session.SetStatsLease(statsLeaseDuration)
-	bindinfo.Lease, err = parseDuration(t.cfg.Performance.BindInfoLease)
-	if err != nil {
-		return err
-	}
+	bindinfo.Lease = parseDuration(t.cfg.Performance.BindInfoLease)
 	domain.RunAutoAnalyze = t.cfg.Performance.RunAutoAnalyze
 	statistics.FeedbackProbability.Store(t.cfg.Performance.FeedbackProbability)
 	handle.MaxQueryFeedbackCount.Store(int64(t.cfg.Performance.QueryFeedbackLimit))
@@ -240,17 +230,10 @@ func (t *TiDBServer) setGlobalVars() error {
 			plannercore.PreparedPlanCacheMaxMemory.Store(total)
 		}
 	}
-	commitMaxBackoff, err := parseDuration(t.cfg.TiKVClient.CommitTimeout)
-	if err != nil {
-		return err
-	}
-	tikv.CommitMaxBackoff = int(commitMaxBackoff.Seconds() * 1000)
 
-	pessimisticLockTTL, err := parseDuration(t.cfg.PessimisticTxn.TTL)
-	if err != nil {
-		return err
-	}
-	tikv.PessimisticLockTTL = uint64(pessimisticLockTTL.Seconds() * 1000)
+	tikv.CommitMaxBackoff = int(parseDuration(t.cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
+	tikv.RegionCacheTTLSec = int64(t.cfg.TiKVClient.RegionCacheTTL)
+
 
 	return nil
 }
