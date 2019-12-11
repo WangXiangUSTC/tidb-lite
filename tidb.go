@@ -289,7 +289,7 @@ func RemoveTiDBServerVar(){
  * job, so it's correctness is guaranteed.
  */
 
-func (t *TiDBServer) setDBInfoMeta(newDBs []*model.DBInfo) error {
+func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
 		t := meta.NewMeta(txn)
 		// reset meta in kv storage. this will clean the system table, so omit it.
