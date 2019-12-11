@@ -368,6 +368,6 @@ func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 	return err
 }
 
-func (t *TiDBServer) GetStorage(newDBs []*model.DBInfo) kv.Storage {
+func (t *TiDBServer) GetStorage() kv.Storage {
 	return t.storage
 }
