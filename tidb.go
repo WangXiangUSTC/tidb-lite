@@ -292,28 +292,6 @@ func RemoveTiDBServerVar(){
 func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
 		t := meta.NewMeta(txn)
-		// reset meta in kv storage. this will clean the system table, so omit it.
-		//originDBs, err1 := t.ListDatabases()
-		//if err1 != nil {
-		//	return errors.Trace(err1)
-		//}
-		//for _, originDB := range originDBs {
-		//	var originTables []*model.TableInfo
-		//	originTables, err1 = t.ListTables(originDB.ID)
-		//	if err1 != nil {
-		//		return errors.Trace(err1)
-		//	}
-		//	// drop table kv pair firstly.
-		//	for _, originTable := range originTables {
-		//		if err1 = t.DropTableOrView(originDB.ID, originTable.ID, true); err1 != nil {
-		//			return errors.Trace(err1)
-		//		}
-		//	}
-		//	// drop db kv pair secondly.
-		//	if err1 = t.DropDatabase(originDB.ID); err1 != nil {
-		//		return errors.Trace(err1)
-		//	}
-		//}
 		var err1 error
 		originDBs, err1 := t.ListDatabases()
 		if err1 != nil {
