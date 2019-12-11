@@ -91,7 +91,7 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 		Tables: []*model.TableInfo{tblInfo},
 		State:  model.StatePublic,
 	}
-	err = tidbServer1.setDBInfoMeta([]*model.DBInfo{dbInfo})
+	err = tidbServer1.SetDBInfoMeta([]*model.DBInfo{dbInfo})
 	c.Assert(err, IsNil)
 
 	err = tidbServer.dom.Reload()

@@ -319,7 +319,7 @@ func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 		if err1 != nil {
 			return errors.Trace(err1)
 		}
-		// delete the origin db with same ID
+		// delete the origin db with same ID and name.
 		deleteDBIfExist := func(newDB *model.DBInfo) error {
 			for _, originDB := range originDBs {
 				if originDB.ID == newDB.ID {
@@ -329,6 +329,13 @@ func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 				}
 				// cause TiDB won't allow same db name, drop it.
 				if originDB.Name.L == newDB.Name.L {
+					// drop table
+					for _, originTable := range originDB.Tables {
+						if err1 = t.DropTableOrView(originDB.ID, originTable.ID, true); err1 != nil {
+							return errors.Trace(err1)
+						}
+					}
+					// drop database
 					if err1 = t.DropDatabase(originDB.ID); err1 != nil {
 						return errors.Trace(err1)
 					}
