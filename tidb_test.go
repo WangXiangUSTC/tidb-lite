@@ -18,6 +18,9 @@ import (
 	"time"
 
 	. "github.com/pingcap/check"
+	"github.com/pingcap/parser/model"
+	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/parser/types"
 )
 
 func TestClient(t *testing.T) {
@@ -65,4 +68,50 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	c.Log(version.String)
 	// version looks like 5.7.25-TiDB-None
 	c.Assert(strings.Contains(version.String, "TiDB"), IsTrue)
+
+	// test for set meta
+	tblInfo := &model.TableInfo{
+		ID:    1000,
+		Name:  model.NewCIStr("my_table"),
+		State: model.StatePublic,
+		Columns: []*model.ColumnInfo{
+			{
+				Name:         model.NewCIStr("c0"),
+				ID:           1,
+				Offset:       0,
+				DefaultValue: 0,
+				State:        model.StatePublic,
+				FieldType:    *types.NewFieldType(mysql.TypeLong),
+			},
+		},
+	}
+	dbInfo := &model.DBInfo{
+		ID:     100,
+		Name:   model.NewCIStr("my_db"),
+		Tables: []*model.TableInfo{tblInfo},
+		State:  model.StatePublic,
+	}
+	err = tidbServer1.setDBInfoMeta([]*model.DBInfo{dbInfo})
+	c.Assert(err, IsNil)
+
+	err = tidbServer.dom.Reload()
+	c.Assert(err, IsNil)
+
+	_, err = dbConn.Query("use my_db;")
+	c.Assert(err, IsNil)
+
+	result, err = dbConn.Query("show create table my_db.my_table")
+	c.Assert(err, IsNil)
+	var nameString sql.NullString
+	var createTableString sql.NullString
+	for result.Next() {
+		err := result.Scan(&nameString, &createTableString)
+		c.Assert(err, IsNil)
+		break
+	}
+	c.Assert(nameString.String, Equals, "my_table")
+	c.Assert(createTableString.String, Equals, "CREATE TABLE `my_table` (\n" +
+		"  `c0` int(11) CHARACTER SET  COLLATE  DEFAULT '0'\n" +
+	    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
+
 }

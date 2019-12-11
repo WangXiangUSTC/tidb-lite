@@ -23,12 +23,14 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/bindinfo"
 	"github.com/pingcap/tidb/config"
 	"github.com/pingcap/tidb/ddl"
 	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/meta"
 	plannercore "github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/privilege/privileges"
 	"github.com/pingcap/tidb/server"
@@ -292,4 +294,68 @@ func DestoryTiDBServer(t *TiDBServer) {
 	t.closeDomainAndStorage()
 	t.CloseGracefully()
 	tidbServer = nil
+}
+
+func RemoveTiDBServerVar(){
+	tidbServer = nil
+}
+
+/*
+ * setDBInfoMeta / setTableInfoMeta is used to store the correct dbInfo and tableInfo into
+ * TiDB-lite meta layer directly. Cause the dbInfo and tableInfo is extracted from ddl history
+ * job, so it's correctness is guaranteed.
+ */
+
+func (t *TiDBServer) setDBInfoMeta(newDBs []*model.DBInfo) error {
+	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
+		t := meta.NewMeta(txn)
+		// reset meta in kv storage. this will clean the system table, so omit it.
+		//originDBs, err1 := t.ListDatabases()
+		//if err1 != nil {
+		//	return errors.Trace(err1)
+		//}
+		//for _, originDB := range originDBs {
+		//	var originTables []*model.TableInfo
+		//	originTables, err1 = t.ListTables(originDB.ID)
+		//	if err1 != nil {
+		//		return errors.Trace(err1)
+		//	}
+		//	// drop table kv pair firstly.
+		//	for _, originTable := range originTables {
+		//		if err1 = t.DropTableOrView(originDB.ID, originTable.ID, true); err1 != nil {
+		//			return errors.Trace(err1)
+		//		}
+		//	}
+		//	// drop db kv pair secondly.
+		//	if err1 = t.DropDatabase(originDB.ID); err1 != nil {
+		//		return errors.Trace(err1)
+		//	}
+		//}
+		var err1 error
+		// store meta in kv storage.
+		for _, newDB := range newDBs {
+			// create database.
+			if err1 = t.CreateDatabase(newDB); err1 != nil {
+				return errors.Trace(err1)
+			}
+			// create table.
+			for _, newTable := range newDB.Tables {
+				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, newTable.AutoIncID); err1 != nil {
+					return errors.Trace(err1)
+				}
+			}
+		}
+		/*
+		 * update schema version here, when it exceed 100, domain reload will fetch all tables from meta directly
+		 * rather than applying schemaDiff one by one.
+		 */
+		for i:=0; i<=105; i++ {
+			_, err := t.GenSchemaVersion()
+			if err != nil {
+				return errors.Trace(err)
+			}
+		}
+		return nil
+	})
+	return err
 }
