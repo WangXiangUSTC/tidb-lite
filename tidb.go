@@ -332,8 +332,33 @@ func (t *TiDBServer) setDBInfoMeta(newDBs []*model.DBInfo) error {
 		//	}
 		//}
 		var err1 error
+		originDBs, err1 := t.ListDatabases()
+		if err1 != nil {
+			return errors.Trace(err1)
+		}
+		// delete the origin db with same ID
+		deleteDBIfExist := func(newDB *model.DBInfo) error {
+			for _, originDB := range originDBs {
+				if originDB.ID == newDB.ID {
+					if err1 = t.DropDatabase(originDB.ID); err1 != nil {
+						return errors.Trace(err1)
+					}
+				}
+				// cause TiDB won't allow same db name, drop it.
+				if originDB.Name.L == newDB.Name.L {
+					if err1 = t.DropDatabase(originDB.ID); err1 != nil {
+						return errors.Trace(err1)
+					}
+				}
+			}
+			return nil
+		}
+
 		// store meta in kv storage.
 		for _, newDB := range newDBs {
+			if err1 = deleteDBIfExist(newDB); err1 != nil {
+				return errors.Trace(err1)
+			}
 			// create database.
 			if err1 = t.CreateDatabase(newDB); err1 != nil {
 				return errors.Trace(err1)
