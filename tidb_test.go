@@ -34,7 +34,7 @@ type testTiDBSuite struct{}
 func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	tidbServer1, err := NewTiDBServer(NewOptions(c.MkDir()).WithPort(4040))
 	c.Assert(err, IsNil)
-	defer tidbServer.Close()
+	defer tidbServer1.Close()
 
 	tidbServer2, err := NewTiDBServer(NewOptions(c.MkDir()).WithPort(4041))
 	c.Assert(err, IsNil)
