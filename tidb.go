@@ -320,7 +320,8 @@ func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 			}
 			// create table.
 			for _, newTable := range newDB.Tables {
-				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, newTable.AutoIncID); err1 != nil {
+				// like create table do, it should rebase to AutoIncID-1.
+				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, newTable.AutoIncID-1); err1 != nil {
 					return errors.Trace(err1)
 				}
 			}
