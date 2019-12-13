@@ -280,10 +280,6 @@ func DestoryTiDBServer(t *TiDBServer) {
 	tidbServer = nil
 }
 
-func RemoveTiDBServerVar(){
-	tidbServer = nil
-}
-
 /*
  * setDBInfoMeta / setTableInfoMeta is used to store the correct dbInfo and tableInfo into
  * TiDB-lite meta layer directly. Cause the dbInfo and tableInfo is extracted from ddl history
