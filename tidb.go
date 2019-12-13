@@ -15,6 +15,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
+	"strconv"
+	"sync"
+	"sync/atomic"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
@@ -41,10 +46,6 @@ import (
 	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/util/printer"
 	"go.uber.org/zap"
-	"runtime"
-	"strconv"
-	"sync"
-	"sync/atomic"
 )
 
 var (
@@ -289,7 +290,7 @@ func RemoveTiDBServerVar(){
  * job, so it's correctness is guaranteed.
  */
 
-func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
+func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
 		t := meta.NewMeta(txn)
 		var err1 error
@@ -338,13 +339,12 @@ func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return t.dom.Reload()
 }
 
 func (t *TiDBServer) GetStorage() kv.Storage {
 	return t.storage
-}
-
-func (t *TiDBServer) GetDomain() *domain.Domain {
-	return t.dom
 }
