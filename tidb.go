@@ -344,3 +344,7 @@ func (t *TiDBServer) SetDBInfoMeta(newDBs []*model.DBInfo) error {
 func (t *TiDBServer) GetStorage() kv.Storage {
 	return t.storage
 }
+
+func (t *TiDBServer) GetDomain() *domain.Domain {
+	return t.dom
+}
