@@ -281,7 +281,7 @@ func DestoryTiDBServer(t *TiDBServer) {
 }
 
 /*
- * setDBInfoMeta / setTableInfoMeta is used to store the correct dbInfo and tableInfo into
+ * SetDBInfoMetaAndReload is used to store the correct dbInfo and tableInfo into
  * TiDB-lite meta layer directly. Cause the dbInfo and tableInfo is extracted from ddl history
  * job, so it's correctness is guaranteed.
  */
@@ -318,7 +318,11 @@ func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 			// create table.
 			for _, newTable := range newDB.Tables {
 				// like create table do, it should rebase to AutoIncID-1.
-				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, newTable.AutoIncID-1); err1 != nil {
+				autoID := newTable.AutoIncID
+				if autoID > 1 {
+					autoID = autoID -1
+				}
+				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, autoID); err1 != nil {
 					return errors.Trace(err1)
 				}
 			}

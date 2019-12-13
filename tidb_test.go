@@ -76,13 +76,24 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 		State: model.StatePublic,
 		Columns: []*model.ColumnInfo{
 			{
-				Name:         model.NewCIStr("c0"),
+				Name:         model.NewCIStr("c01"),
 				ID:           1,
 				Offset:       0,
 				DefaultValue: 0,
 				State:        model.StatePublic,
 				FieldType:    *types.NewFieldType(mysql.TypeLong),
 			},
+		},
+		Indices: []*model.IndexInfo{
+					{
+						ID: 10,
+						Name:model.NewCIStr("i1"),
+						Table:model.NewCIStr("my_table"),
+						Columns: []*model.IndexColumn{{Name:model.NewCIStr("c01"),Offset:0,}},
+						Unique:true,
+						State:model.StatePublic,
+						Tp:model.IndexTypeBtree,
+					},
 		},
 	}
 	dbInfo := &model.DBInfo{
@@ -91,7 +102,7 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 		Tables: []*model.TableInfo{tblInfo},
 		State:  model.StatePublic,
 	}
-	err = tidbServer1.SetDBInfoMeta([]*model.DBInfo{dbInfo})
+	err = tidbServer1.SetDBInfoMetaAndReload([]*model.DBInfo{dbInfo})
 	c.Assert(err, IsNil)
 
 	err = tidbServer.dom.Reload()
@@ -110,8 +121,19 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 		break
 	}
 	c.Assert(nameString.String, Equals, "my_table")
-	c.Assert(createTableString.String, Equals, "CREATE TABLE `my_table` (\n" +
-		"  `c0` int(11) CHARACTER SET  COLLATE  DEFAULT '0'\n" +
-	    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
+	//c.Assert(createTableString.String, Equals, "CREATE TABLE `my_table` (\n" +
+	//	"  `c01` int(11) CHARACTER SET  COLLATE  DEFAULT '0'\n" +
+	//    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
 
+	c.Assert(err, IsNil)
+	// result, err = dbConn.Query("select COLUMN_NAME from information_schema.columns where TABLE_SCHEMA=\"my_db\" and TABLE_NAME=\"my_table\"")
+	result, err = dbConn.Query("SELECT non_unique, index_name, seq_in_index, column_name FROM information_schema.statistics WHERE table_schema = \"my_db\" AND table_name = \"my_table\" ORDER BY seq_in_index ASC")
+	c.Assert(err, IsNil)
+	var columnString sql.NullString
+	for result.Next() {
+		err := result.Scan(&columnString,&columnString,&columnString,&columnString)
+		c.Assert(err, IsNil)
+		break
+	}
+	c.Assert(columnString.String, Equals, "c01")
 }
