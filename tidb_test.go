@@ -85,15 +85,15 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 			},
 		},
 		Indices: []*model.IndexInfo{
-					{
-						ID: 10,
-						Name:model.NewCIStr("i1"),
-						Table:model.NewCIStr("my_table"),
-						Columns: []*model.IndexColumn{{Name:model.NewCIStr("c01"),Offset:0,}},
-						Unique:true,
-						State:model.StatePublic,
-						Tp:model.IndexTypeBtree,
-					},
+			{
+				ID:      10,
+				Name:    model.NewCIStr("i1"),
+				Table:   model.NewCIStr("my_table"),
+				Columns: []*model.IndexColumn{{Name: model.NewCIStr("c01"), Offset: 0}},
+				Unique:  true,
+				State:   model.StatePublic,
+				Tp:      model.IndexTypeBtree,
+			},
 		},
 	}
 	dbInfo := &model.DBInfo{
@@ -121,22 +121,22 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 		break
 	}
 	c.Assert(nameString.String, Equals, "my_table")
-	c.Assert(createTableString.String, Equals, "CREATE TABLE `my_table` (\n" +
-		"  `c01` int(11) CHARACTER SET  COLLATE  DEFAULT '0',\n" +
-		"  UNIQUE KEY `i1` (`c01`(0))\n" +
-	   ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
+	c.Assert(createTableString.String, Equals, "CREATE TABLE `my_table` (\n"+
+		"  `c01` int(11) CHARACTER SET  COLLATE  DEFAULT '0',\n"+
+		"  UNIQUE KEY `i1` (`c01`(0))\n"+
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin")
 
 	c.Assert(err, IsNil)
 	result, err = dbConn.Query("SELECT non_unique, index_name, seq_in_index, column_name FROM information_schema.statistics WHERE table_schema = \"my_db\" AND table_name = \"my_table\" ORDER BY seq_in_index ASC")
 	c.Assert(err, IsNil)
-	var(
-		nonUniqueString sql.NullString
-		indexNameString sql.NullString
+	var (
+		nonUniqueString  sql.NullString
+		indexNameString  sql.NullString
 		seqInIndexString sql.NullString
-		columnString sql.NullString
+		columnString     sql.NullString
 	)
 	for result.Next() {
-		err := result.Scan(&nonUniqueString,&indexNameString,&seqInIndexString,&columnString)
+		err := result.Scan(&nonUniqueString, &indexNameString, &seqInIndexString, &columnString)
 		c.Assert(err, IsNil)
 		break
 	}

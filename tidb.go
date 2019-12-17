@@ -235,7 +235,6 @@ func (t *TiDBServer) setGlobalVars() error {
 	tikv.CommitMaxBackoff = int(parseDuration(t.cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
 	tikv.RegionCacheTTLSec = int64(t.cfg.TiKVClient.RegionCacheTTL)
 
-
 	return nil
 }
 
@@ -320,7 +319,7 @@ func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 				// like create table do, it should rebase to AutoIncID-1.
 				autoID := newTable.AutoIncID
 				if autoID > 1 {
-					autoID = autoID -1
+					autoID = autoID - 1
 				}
 				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, autoID); err1 != nil {
 					return errors.Trace(err1)
@@ -331,7 +330,7 @@ func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 		 * update schema version here, when it exceed 100, domain reload will fetch all tables from meta directly
 		 * rather than applying schemaDiff one by one.
 		 */
-		for i:=0; i<=105; i++ {
+		for i := 0; i <= 105; i++ {
 			_, err := t.GenSchemaVersion()
 			if err != nil {
 				return errors.Trace(err)
