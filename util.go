@@ -14,17 +14,18 @@ package tidblite
 import (
 	"time"
 
-	"github.com/pingcap/errors"
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
 )
 
 // parseDuration parses lease argument string.
-func parseDuration(lease string) (time.Duration, error) {
+func parseDuration(lease string) time.Duration {
 	dur, err := time.ParseDuration(lease)
 	if err != nil {
 		dur, err = time.ParseDuration(lease + "s")
 	}
 	if err != nil || dur < 0 {
-		return dur, errors.Errorf("invalid lease duration %s", lease)
+		log.Fatal("invalid lease duration", zap.String("lease", lease))
 	}
-	return dur, nil
+	return dur
 }

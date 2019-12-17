@@ -23,12 +23,14 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/bindinfo"
 	"github.com/pingcap/tidb/config"
 	"github.com/pingcap/tidb/ddl"
 	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/meta"
 	plannercore "github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/privilege/privileges"
 	"github.com/pingcap/tidb/server"
@@ -182,21 +184,12 @@ func (t *TiDBServer) createStoreAndDomain() error {
 }
 
 func (t *TiDBServer) setGlobalVars() error {
-	ddlLeaseDuration, err := parseDuration(t.cfg.Lease)
-	if err != nil {
-		return err
-	}
+	ddlLeaseDuration := parseDuration(t.cfg.Lease)
 	session.SetSchemaLease(ddlLeaseDuration)
 	runtime.GOMAXPROCS(int(t.cfg.Performance.MaxProcs))
-	statsLeaseDuration, err := parseDuration(t.cfg.Performance.StatsLease)
-	if err != nil {
-		return err
-	}
+	statsLeaseDuration := parseDuration(t.cfg.Performance.StatsLease)
 	session.SetStatsLease(statsLeaseDuration)
-	bindinfo.Lease, err = parseDuration(t.cfg.Performance.BindInfoLease)
-	if err != nil {
-		return err
-	}
+	bindinfo.Lease = parseDuration(t.cfg.Performance.BindInfoLease)
 	domain.RunAutoAnalyze = t.cfg.Performance.RunAutoAnalyze
 	statistics.FeedbackProbability.Store(t.cfg.Performance.FeedbackProbability)
 	handle.MaxQueryFeedbackCount.Store(int64(t.cfg.Performance.QueryFeedbackLimit))
@@ -238,17 +231,9 @@ func (t *TiDBServer) setGlobalVars() error {
 			plannercore.PreparedPlanCacheMaxMemory.Store(total)
 		}
 	}
-	commitMaxBackoff, err := parseDuration(t.cfg.TiKVClient.CommitTimeout)
-	if err != nil {
-		return err
-	}
-	tikv.CommitMaxBackoff = int(commitMaxBackoff.Seconds() * 1000)
 
-	pessimisticLockTTL, err := parseDuration(t.cfg.PessimisticTxn.TTL)
-	if err != nil {
-		return err
-	}
-	tikv.PessimisticLockTTL = uint64(pessimisticLockTTL.Seconds() * 1000)
+	tikv.CommitMaxBackoff = int(parseDuration(t.cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
+	tikv.RegionCacheTTLSec = int64(t.cfg.TiKVClient.RegionCacheTTL)
 
 	return nil
 }
@@ -292,4 +277,73 @@ func DestoryTiDBServer(t *TiDBServer) {
 	t.closeDomainAndStorage()
 	t.CloseGracefully()
 	tidbServer = nil
+}
+
+/*
+ * SetDBInfoMetaAndReload is used to store the correct dbInfo and tableInfo into
+ * TiDB-lite meta layer directly. Cause the dbInfo and tableInfo is extracted from ddl history
+ * job, so it's correctness is guaranteed.
+ */
+
+func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
+	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
+		t := meta.NewMeta(txn)
+		var err1 error
+		originDBs, err1 := t.ListDatabases()
+		if err1 != nil {
+			return errors.Trace(err1)
+		}
+		// delete the origin db with same ID and name.
+		deleteDBIfExist := func(newDB *model.DBInfo) error {
+			for _, originDB := range originDBs {
+				if originDB.ID == newDB.ID {
+					if err1 = t.DropDatabase(originDB.ID); err1 != nil {
+						return errors.Trace(err1)
+					}
+				}
+			}
+			return nil
+		}
+
+		// store meta in kv storage.
+		for _, newDB := range newDBs {
+			if err1 = deleteDBIfExist(newDB); err1 != nil {
+				return errors.Trace(err1)
+			}
+			// create database.
+			if err1 = t.CreateDatabase(newDB); err1 != nil {
+				return errors.Trace(err1)
+			}
+			// create table.
+			for _, newTable := range newDB.Tables {
+				// like create table do, it should rebase to AutoIncID-1.
+				autoID := newTable.AutoIncID
+				if autoID > 1 {
+					autoID = autoID - 1
+				}
+				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, autoID); err1 != nil {
+					return errors.Trace(err1)
+				}
+			}
+		}
+		/*
+		 * update schema version here, when it exceed 100, domain reload will fetch all tables from meta directly
+		 * rather than applying schemaDiff one by one.
+		 */
+		for i := 0; i <= 105; i++ {
+			_, err := t.GenSchemaVersion()
+			if err != nil {
+				return errors.Trace(err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return t.dom.Reload()
+}
+
+func (t *TiDBServer) GetStorage() kv.Storage {
+	return t.storage
 }
