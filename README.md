@@ -34,15 +34,7 @@ tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()).WithPor
 c.Assert(err, IsNil)
 defer tidbServer.Close()
 
-var dbConn *sql.DB
-for i := 0; i < 5; i++ {
-	dbConn, err = tidbServer.CreateConn()
-	if err != nil {
-		time.Sleep(100 * time.Millisecond)
-		continue
-	}
-	break
-}
+dbConn, err := tidbServer.CreateConn()
 c.Assert(err, IsNil)
 ```
 

@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"time"
 	"sync/atomic"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -52,6 +53,10 @@ var (
 	// singleton instance
 	tidbServer *TiDBServer
 	mu         sync.Mutex
+)
+
+const (
+	defaultRetryTime = 10
 )
 
 // TiDBServer ...
@@ -113,20 +118,30 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	return tidbServer, nil
 }
 
+// CreateConn creates a database connection.
 func (t *TiDBServer) CreateConn() (*sql.DB, error) {
 	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4", "root", "", "127.0.0.1", t.cfg.Port)
-	dbConn, err := sql.Open("mysql", dbDSN)
-	if err != nil {
-		return nil, errors.Trace(err)
+	var (
+		dbConn *sql.DB
+		err    error
+	)
+	for i := 0; i < defaultRetryTime; i++ {
+		dbConn, err = sql.Open("mysql", dbDSN)
+		if err == nil {
+			return dbConn, nil
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
-	return dbConn, nil
+	return dbConn, err
 }
 
+// Close closes TiDB Server.
 func (t *TiDBServer) Close() {
 	t.serverShutdown(false)
 }
 
+// CloseGracefully closes TiDB server gracefully.
 func (t *TiDBServer) CloseGracefully() {
 	t.serverShutdown(true)
 }
