@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/pingcap/check"
 	"github.com/pingcap/parser/model"
@@ -139,6 +140,10 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	c.Assert(columnString.String, Equals, "c01")
 
 	tidbServer1.Close()
+
+	// TODO: remove time sleep
+	time.Sleep(time.Second)
+
 	tidbServer2, err := NewTiDBServer(NewOptions(c.MkDir()))
 	// can create another tidb server after the tidb close.
 	c.Assert(err, IsNil)
