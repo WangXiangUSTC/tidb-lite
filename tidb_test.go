@@ -149,6 +149,7 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	tidbServer2, err := NewTiDBServer(NewOptions(c.MkDir()))
 	c.Assert(err, IsNil)
 	tidbServer2.Close()
+	fmt.Println("close tidb server success")
 
 	// tidb server not exist after close
 	_, err = GetTiDBServer()
