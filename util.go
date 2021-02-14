@@ -12,6 +12,7 @@
 package tidblite
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/pingcap/log"
@@ -28,4 +29,15 @@ func parseDuration(lease string) time.Duration {
 		log.Fatal("invalid lease duration", zap.String("lease", lease))
 	}
 	return dur
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyz"
+
+func randomStringWithCharset(length int) string {
+	var seededRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
 }

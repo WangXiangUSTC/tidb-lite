@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
-	"time"
 
 	. "github.com/pingcap/check"
 	"github.com/pingcap/parser/model"
@@ -32,24 +31,18 @@ var _ = Suite(&testTiDBSuite{})
 type testTiDBSuite struct{}
 
 func (t *testTiDBSuite) TestTiDBServer(c *C) {
-	tidbServer1, err := NewTiDBServer(NewOptions(c.MkDir()).WithPort(4040))
+	tidbServer1, err := NewTiDBServer(NewOptions(c.MkDir()))
 	c.Assert(err, IsNil)
 	defer tidbServer1.Close()
 
-	tidbServer2, err := NewTiDBServer(NewOptions(c.MkDir()).WithPort(4041))
+	_, err = GetTiDBServer()
 	c.Assert(err, IsNil)
-	// only support create one tidb server
-	c.Assert(tidbServer1, Equals, tidbServer2)
 
-	var dbConn *sql.DB
-	for i := 0; i < 5; i++ {
-		dbConn, err = tidbServer1.CreateConn()
-		if err != nil {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		break
-	}
+	_, err = NewTiDBServer(NewOptions(c.MkDir()).WithPort(4041))
+	// only support exist one tidb server
+	c.Assert(err, NotNil)
+
+	dbConn, err := tidbServer1.CreateConn()
 	c.Assert(err, IsNil)
 
 	result, err := dbConn.Query("SELECT version()")
@@ -144,4 +137,14 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	c.Assert(indexNameString.String, Equals, "i1")
 	c.Assert(seqInIndexString.String, Equals, "1")
 	c.Assert(columnString.String, Equals, "c01")
+
+	tidbServer1.Close()
+	tidbServer2, err := NewTiDBServer(NewOptions(c.MkDir()))
+	// can create another tidb server after the tidb close.
+	c.Assert(err, IsNil)
+	tidbServer2.Close()
+
+	// tidb server not exist after close
+	_, err = GetTiDBServer()
+	c.Assert(err, NotNil)
 }
