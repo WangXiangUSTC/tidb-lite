@@ -53,6 +53,7 @@ var (
 	// singleton instance
 	tidbServer *TiDBServer
 	tidbConfig *config.Config
+	isClosed   bool
 	mu         sync.Mutex
 )
 
@@ -75,9 +76,11 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if tidbServer != nil {
+	if tidbServer != nil && !isClosed {
 		return nil, errors.New("already had one tidb server")
 	}
+
+	isClosed = false
 
 	tidbConfig = config.NewConfig()
 	tidbConfig.Store = "mocktikv"
@@ -114,7 +117,6 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 			log.Error("tidb lite run server failed", zap.Error(err))
 		}
 		tidbServer.cleanup(tidbServer.closeGracefully)
-		tidbServer = nil
 	}()
 
 	return tidbServer, nil
@@ -127,6 +129,10 @@ func GetTiDBServer() (*TiDBServer, error) {
 
 	if tidbServer == nil {
 		return nil, errors.New("tidb server not exists")
+	}
+
+	if isClosed {
+		return nil, errors.New("tidb server is not running")
 	}
 
 	return tidbServer, nil
@@ -278,8 +284,12 @@ func (t *TiDBServer) setGlobalVars() error {
 }
 
 func (t *TiDBServer) serverShutdown(isgraceful bool) {
+	mu.Lock()
+	defer mu.Unlock()
+
 	t.closeGracefully = isgraceful
 	t.svr.Close()
+	isClosed = true
 }
 
 func (t *TiDBServer) closeDomainAndStorage() {
@@ -310,12 +320,6 @@ func (t *TiDBServer) setupLog() error {
 	}
 
 	return nil
-}
-
-func DestoryTiDBServer(t *TiDBServer) {
-	t.closeDomainAndStorage()
-	t.CloseGracefully()
-	tidbServer = nil
 }
 
 /*

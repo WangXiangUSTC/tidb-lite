@@ -31,7 +31,6 @@ type testExampleSuite struct{}
 func (t *testExampleSuite) TestGetRowCount(c *C) {
 	tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()))
 	c.Assert(err, IsNil)
-	//defer 
 
 	dbConn, err := tidbServer.CreateConn()
 	c.Assert(err, IsNil)
