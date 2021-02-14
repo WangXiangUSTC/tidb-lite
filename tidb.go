@@ -197,6 +197,9 @@ func (t *TiDBServer) createServer() error {
 }
 
 func (t *TiDBServer) runServer() error {
+	if t == nil || t.svr == nil {
+		return errors.New("tidb server not exists")
+	}
 	return t.svr.Run()
 }
 
