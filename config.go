@@ -11,16 +11,20 @@
 
 package tidblite
 
-import ()
+import (
+	"fmt"
+)
 
 const (
-	// DefaultPort is the default port to use
-	DefaultPort = 4040
+	// DefaultSocket is the default socket to use
+	DefaultSocket = "/tmp/tidb-lite-socket"
 )
 
 type Options struct {
 	// DataDir is the directory to save db data
 	DataDir string
+
+	Socket string
 
 	Port int
 }
@@ -29,12 +33,18 @@ type Options struct {
 func NewOptions(dataDir string) *Options {
 	return &Options{
 		DataDir: dataDir,
-		Port:    DefaultPort,
+		Socket:  fmt.Sprintf("%s-%s.sock", DefaultSocket, randomStringWithCharset(5)),
 	}
 }
 
 // WithPort set the port
 func (o *Options) WithPort(port int) *Options {
 	o.Port = port
+	return o
+}
+
+// WithSocket set the socket
+func (o *Options) WithSocket(socket string) *Options {
+	o.Socket = socket
 	return o
 }

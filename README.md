@@ -1,4 +1,4 @@
-# tidb-lite
+# tidb-lite ![test](https://github.com/WangXiangUSTC/tidb-lite/workflows/test/badge.svg)
 
 [English README](./README_EN.md)
 
@@ -9,6 +9,10 @@ tidb-lite 是一个库，可以方便地使用该库在 golang 应用或者单�
 - func NewTiDBServer(options *Options) (*TiDBServer, error)
   
   创建一个 TiDB Server，使用 options 来设置 TiDB 存储数据的路径和服务的端口号。
+
+- func GetTiDBServer() (*TiDBServer, error)
+
+  获取已经创建的 TiDB Server。
 
 - func (t *TiDBServer) CreateConn() (*sql.DB, error)
   
@@ -30,21 +34,17 @@ tidb-lite 是一个库，可以方便地使用该库在 golang 应用或者单�
 在 [example_test.go](./example/example_test.go) 中使用以下代码创建 TiDB Server 并获取数据库链接：
 
 ```
-tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()).WithPort(4040))
+tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()))
 c.Assert(err, IsNil)
 defer tidbServer.Close()
 
-var dbConn *sql.DB
-for i := 0; i < 5; i++ {
-	dbConn, err = tidbServer.CreateConn()
-	if err != nil {
-		time.Sleep(100 * time.Millisecond)
-		continue
-	}
-	break
-}
+dbConn, err := tidbServer.CreateConn()
 c.Assert(err, IsNil)
 ```
 
 然后就可以使用链接 `dbConn` 生成测试数据，对函数 `GetRowCount` 进行测试。
+
+## 注意
+
+tidb-lite 只允许同一时刻运行一个 TiDB 实例，需要保证已经创建的 TiDB 实例 close 后再创建新的实例。
 

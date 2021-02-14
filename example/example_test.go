@@ -13,7 +13,6 @@ package example
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
@@ -30,19 +29,10 @@ var _ = Suite(&testExampleSuite{})
 type testExampleSuite struct{}
 
 func (t *testExampleSuite) TestGetRowCount(c *C) {
-	tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()).WithPort(4040))
+	tidbServer, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()))
 	c.Assert(err, IsNil)
-	defer tidbServer.Close()
 
-	var dbConn *sql.DB
-	for i := 0; i < 5; i++ {
-		dbConn, err = tidbServer.CreateConn()
-		if err != nil {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		break
-	}
+	dbConn, err := tidbServer.CreateConn()
 	c.Assert(err, IsNil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -62,4 +52,14 @@ func (t *testExampleSuite) TestGetRowCount(c *C) {
 	count, err = GetRowCount(ctx, dbConn, "example_test", "t", "")
 	c.Assert(err, IsNil)
 	c.Assert(count, Equals, int64(3))
+	tidbServer.Close()
+
+	tidbServer2, err := tidblite.NewTiDBServer(tidblite.NewOptions(c.MkDir()))
+	c.Assert(err, IsNil)
+	defer tidbServer2.Close()
+
+	dbConn2, err := tidbServer2.CreateConn()
+	c.Assert(err, IsNil)
+	_, err = dbConn2.ExecContext(ctx, "create database example_test")
+	c.Assert(err, IsNil)
 }

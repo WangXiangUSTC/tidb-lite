@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
@@ -51,7 +52,13 @@ import (
 var (
 	// singleton instance
 	tidbServer *TiDBServer
+	tidbConfig *config.Config
+	isClosed   bool
 	mu         sync.Mutex
+)
+
+const (
+	defaultRetryTime = 10
 )
 
 // TiDBServer ...
@@ -69,21 +76,23 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if tidbServer != nil {
-		log.Warn("already had one tidb server")
-		return tidbServer, nil
+	if tidbServer != nil && !isClosed {
+		return nil, errors.New("already had one tidb server")
 	}
 
-	cfg := config.GetGlobalConfig()
-	cfg.Store = "mocktikv"
-	cfg.Path = options.DataDir
-	cfg.Port = uint(options.Port)
-	if err := cfg.Valid(); err != nil {
+	isClosed = false
+
+	tidbConfig = config.NewConfig()
+	tidbConfig.Store = "mocktikv"
+	tidbConfig.Path = options.DataDir
+	tidbConfig.Port = uint(options.Port)
+	tidbConfig.Socket = options.Socket
+	if err := tidbConfig.Valid(); err != nil {
 		return nil, errors.Annotatef(err, "invalid config")
 	}
 
 	tidbServer = &TiDBServer{
-		cfg: cfg,
+		cfg: tidbConfig,
 	}
 
 	if err := tidbServer.registerStores(); err != nil {
@@ -113,20 +122,52 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	return tidbServer, nil
 }
 
-func (t *TiDBServer) CreateConn() (*sql.DB, error) {
-	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4", "root", "", "127.0.0.1", t.cfg.Port)
-	dbConn, err := sql.Open("mysql", dbDSN)
-	if err != nil {
-		return nil, errors.Trace(err)
+// GetTiDBServer returns the tidb server if it is not nil
+func GetTiDBServer() (*TiDBServer, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if tidbServer == nil {
+		return nil, errors.New("tidb server not exists")
 	}
 
-	return dbConn, nil
+	if isClosed {
+		return nil, errors.New("tidb server is not running")
+	}
+
+	return tidbServer, nil
 }
 
+// CreateConn creates a database connection.
+func (t *TiDBServer) CreateConn() (*sql.DB, error) {
+	var dbDSN string
+	if t.cfg.Port != 0 {
+		dbDSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4", "root", "", "127.0.0.1", t.cfg.Port)
+	} else {
+		dbDSN = fmt.Sprintf("%s:%s@unix(%s)/?charset=utf8mb4", "root", "", t.cfg.Socket)
+	}
+
+	var (
+		dbConn *sql.DB
+		err    error
+	)
+	for i := 0; i < defaultRetryTime; i++ {
+		dbConn, err = sql.Open("mysql", dbDSN)
+		if err == nil {
+			return dbConn, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return dbConn, err
+}
+
+// Close closes TiDB Server.
 func (t *TiDBServer) Close() {
 	t.serverShutdown(false)
 }
 
+// CloseGracefully closes TiDB server gracefully.
 func (t *TiDBServer) CloseGracefully() {
 	t.serverShutdown(true)
 }
@@ -140,11 +181,12 @@ func (t *TiDBServer) printInfo() {
 }
 
 func (t *TiDBServer) registerStores() error {
-	if err := kvstore.Register("tikv", tikv.Driver{}); err != nil {
-		return err
-	}
+	kvstore.Register("tikv", tikv.Driver{})
+
 	tikv.NewGCHandlerFunc = gcworker.NewGCWorker
-	return kvstore.Register("mocktikv", mockstore.MockDriver{})
+	kvstore.Register("mocktikv", mockstore.MockDriver{})
+
+	return nil
 }
 
 func (t *TiDBServer) createServer() error {
@@ -162,6 +204,12 @@ func (t *TiDBServer) createServer() error {
 }
 
 func (t *TiDBServer) runServer() error {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Error("tidb lite run server failed", zap.Reflect("error", err))
+		}
+	}()
+
 	return t.svr.Run()
 }
 
@@ -239,8 +287,12 @@ func (t *TiDBServer) setGlobalVars() error {
 }
 
 func (t *TiDBServer) serverShutdown(isgraceful bool) {
+	mu.Lock()
+	defer mu.Unlock()
+
 	t.closeGracefully = isgraceful
 	t.svr.Close()
+	isClosed = true
 }
 
 func (t *TiDBServer) closeDomainAndStorage() {
@@ -271,12 +323,6 @@ func (t *TiDBServer) setupLog() error {
 	}
 
 	return nil
-}
-
-func DestoryTiDBServer(t *TiDBServer) {
-	t.closeDomainAndStorage()
-	t.CloseGracefully()
-	tidbServer = nil
 }
 
 /*
