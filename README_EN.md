@@ -1,4 +1,4 @@
-# tidb-lite
+# tidb-lite ![test](https://github.com/WangXiangUSTC/tidb-lite/workflows/test/badge.svg)
 
 tidb-lite is a package, we can use this package to create a TiDB server with `mocktikv` mode in your application or unit test.
 

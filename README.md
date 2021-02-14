@@ -1,4 +1,4 @@
-# tidb-lite
+# tidb-lite ![test](https://github.com/WangXiangUSTC/tidb-lite/workflows/test/badge.svg)
 
 [English README](./README_EN.md)
 
