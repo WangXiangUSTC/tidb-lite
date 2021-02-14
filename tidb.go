@@ -204,9 +204,12 @@ func (t *TiDBServer) createServer() error {
 }
 
 func (t *TiDBServer) runServer() error {
-	if t == nil || t.svr == nil {
-		return errors.New("tidb server not exists")
-	}
+	defer func() {
+		if err := recover(); err != nil {
+			log.Error("tidb lite run server failed", zap.Reflect("error", err))
+		}
+	}()
+
 	return t.svr.Run()
 }
 
