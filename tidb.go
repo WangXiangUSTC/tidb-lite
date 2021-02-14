@@ -114,6 +114,7 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 			log.Error("tidb lite run server failed", zap.Error(err))
 		}
 		tidbServer.cleanup(tidbServer.closeGracefully)
+		tidbServer = nil
 	}()
 
 	return tidbServer, nil
@@ -277,12 +278,8 @@ func (t *TiDBServer) setGlobalVars() error {
 }
 
 func (t *TiDBServer) serverShutdown(isgraceful bool) {
-	mu.Lock()
-	defer mu.Unlock()
-
 	t.closeGracefully = isgraceful
 	t.svr.Close()
-	tidbServer = nil
 }
 
 func (t *TiDBServer) closeDomainAndStorage() {
