@@ -13,6 +13,7 @@ package tidblite
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -142,10 +143,10 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	tidbServer1.Close()
 
 	// TODO: remove time sleep
-	time.Sleep(time.Second)
+	time.Sleep(5 * time.Second)
 
+	fmt.Println("can create another tidb server after the tidb close.")
 	tidbServer2, err := NewTiDBServer(NewOptions(c.MkDir()))
-	// can create another tidb server after the tidb close.
 	c.Assert(err, IsNil)
 	tidbServer2.Close()
 
