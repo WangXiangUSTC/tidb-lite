@@ -19,3 +19,5 @@ require (
 	github.com/twinj/uuid v1.0.0 // indirect
 	go.uber.org/zap v1.12.0
 )
+
+replace github.com/pingcap/parser v0.0.0-20191210055545-753e13bfdbf0 => github.com/WangXiangUSTC/parser v0.0.0-20210518141443-57a13baea68a
