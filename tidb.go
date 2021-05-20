@@ -69,6 +69,7 @@ type TiDBServer struct {
 	dom     *domain.Domain
 
 	closeGracefully bool
+	connOpts        string
 }
 
 // NewTiDBServer returns a new TiDBServer
@@ -92,7 +93,8 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	}
 
 	tidbServer = &TiDBServer{
-		cfg: tidbConfig,
+		cfg:      tidbConfig,
+		connOpts: options.ConnOpts,
 	}
 
 	if err := tidbServer.registerStores(); err != nil {
@@ -142,9 +144,9 @@ func GetTiDBServer() (*TiDBServer, error) {
 func (t *TiDBServer) CreateConn() (*sql.DB, error) {
 	var dbDSN string
 	if t.cfg.Port != 0 {
-		dbDSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4", "root", "", "127.0.0.1", t.cfg.Port)
+		dbDSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/?%s", "root", "", "127.0.0.1", t.cfg.Port, t.connOpts)
 	} else {
-		dbDSN = fmt.Sprintf("%s:%s@unix(%s)/?charset=utf8mb4", "root", "", t.cfg.Socket)
+		dbDSN = fmt.Sprintf("%s:%s@unix(%s)/?%s", "root", "", t.cfg.Socket, t.connOpts)
 	}
 
 	var (
