@@ -90,10 +90,11 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 		},
 	}
 	dbInfo := &model.DBInfo{
-		ID:     100,
-		Name:   model.NewCIStr("my_db"),
-		Tables: []*model.TableInfo{tblInfo},
-		State:  model.StatePublic,
+		ID:      100,
+		Name:    model.NewCIStr("my_db"),
+		Tables:  []*model.TableInfo{tblInfo},
+		State:   model.StatePublic,
+		Charset: "utf8",
 	}
 	err = tidbServer1.SetDBInfoMetaAndReload([]*model.DBInfo{dbInfo})
 	c.Assert(err, IsNil)

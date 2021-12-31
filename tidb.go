@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/parser/terror"
 	"github.com/pingcap/tidb/bindinfo"
 	"github.com/pingcap/tidb/config"
 	"github.com/pingcap/tidb/ddl"
@@ -38,11 +40,9 @@ import (
 	"github.com/pingcap/tidb/session"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/statistics"
-	"github.com/pingcap/tidb/statistics/handle"
 	kvstore "github.com/pingcap/tidb/store"
 	"github.com/pingcap/tidb/store/mockstore"
 	"github.com/pingcap/tidb/store/tikv"
-	"github.com/pingcap/tidb/store/tikv/gcworker"
 	"github.com/pingcap/tidb/util/logutil"
 	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/util/printer"
@@ -183,11 +183,14 @@ func (t *TiDBServer) printInfo() {
 }
 
 func (t *TiDBServer) registerStores() error {
-	kvstore.Register("tikv", tikv.Driver{})
+	err := kvstore.Register("mocktikv", mockstore.MockTiKVDriver{})
+	if err != nil {
+		if strings.Contains(err.Error(), "mocktikv is already registered") {
+			return nil
+		}
+	}
 
-	tikv.NewGCHandlerFunc = gcworker.NewGCWorker
-	kvstore.Register("mocktikv", mockstore.MockDriver{})
-
+	terror.MustNil(err)
 	return nil
 }
 
@@ -234,6 +237,8 @@ func (t *TiDBServer) createStoreAndDomain() error {
 }
 
 func (t *TiDBServer) setGlobalVars() error {
+	cfg := config.GetGlobalConfig()
+
 	ddlLeaseDuration := parseDuration(t.cfg.Lease)
 	session.SetSchemaLease(ddlLeaseDuration)
 	runtime.GOMAXPROCS(int(t.cfg.Performance.MaxProcs))
@@ -242,7 +247,6 @@ func (t *TiDBServer) setGlobalVars() error {
 	bindinfo.Lease = parseDuration(t.cfg.Performance.BindInfoLease)
 	domain.RunAutoAnalyze = t.cfg.Performance.RunAutoAnalyze
 	statistics.FeedbackProbability.Store(t.cfg.Performance.FeedbackProbability)
-	handle.MaxQueryFeedbackCount.Store(int64(t.cfg.Performance.QueryFeedbackLimit))
 	statistics.RatioOfPseudoEstimate.Store(t.cfg.Performance.PseudoEstimateRatio)
 	ddl.RunWorker = t.cfg.RunDDL
 	if t.cfg.SplitTable {
@@ -253,16 +257,19 @@ func (t *TiDBServer) setGlobalVars() error {
 
 	priority := mysql.Str2Priority(t.cfg.Performance.ForcePriority)
 	variable.ForcePriority = int32(priority)
-	variable.SysVars[variable.TiDBForcePriority].Value = mysql.Priority2Str[priority]
-
-	variable.SysVars[variable.TIDBMemQuotaQuery].Value = strconv.FormatInt(t.cfg.MemQuotaQuery, 10)
-	variable.SysVars["lower_case_table_names"].Value = strconv.Itoa(t.cfg.LowerCaseTableNames)
-	variable.SysVars[variable.LogBin].Value = variable.BoolToIntStr(config.GetGlobalConfig().Binlog.Enable)
-
-	variable.SysVars[variable.Port].Value = fmt.Sprintf("%d", t.cfg.Port)
-	variable.SysVars[variable.Socket].Value = t.cfg.Socket
-	variable.SysVars[variable.DataDir].Value = t.cfg.Path
-	variable.SysVars[variable.TiDBSlowQueryFile].Value = t.cfg.Log.SlowQueryFile
+	variable.SetSysVar(variable.TiDBForcePriority, mysql.Priority2Str[priority])
+	variable.SetSysVar(variable.TiDBOptDistinctAggPushDown, variable.BoolToOnOff(cfg.Performance.DistinctAggPushDown))
+	variable.SetSysVar(variable.TIDBMemQuotaQuery, strconv.FormatInt(cfg.MemQuotaQuery, 10))
+	variable.SetSysVar("lower_case_table_names", strconv.Itoa(cfg.LowerCaseTableNames))
+	variable.SetSysVar(variable.LogBin, variable.BoolToOnOff(config.GetGlobalConfig().Binlog.Enable))
+	variable.SetSysVar(variable.Port, fmt.Sprintf("%d", cfg.Port))
+	variable.SetSysVar(variable.Socket, cfg.Socket)
+	variable.SetSysVar(variable.DataDir, cfg.Path)
+	variable.SetSysVar(variable.TiDBSlowQueryFile, cfg.Log.SlowQueryFile)
+	variable.SetSysVar(variable.TiDBIsolationReadEngines, strings.Join(cfg.IsolationRead.Engines, ", "))
+	variable.SetSysVar(variable.TiDBEnforceMPPExecution, variable.BoolToOnOff(config.GetGlobalConfig().Performance.EnforceMPP))
+	//variable.SetSysVar(variable.CharsetDatabase, "utf8")
+	variable.MemoryUsageAlarmRatio.Store(cfg.Performance.MemoryUsageAlarmRatio)
 
 	// For CI environment we default enable prepare-plan-cache.
 	plannercore.SetPreparedPlanCache(config.CheckTableBeforeDrop || t.cfg.PreparedPlanCache.Enabled)
@@ -282,8 +289,8 @@ func (t *TiDBServer) setGlobalVars() error {
 		}
 	}
 
-	tikv.CommitMaxBackoff = int(parseDuration(t.cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
-	tikv.RegionCacheTTLSec = int64(t.cfg.TiKVClient.RegionCacheTTL)
+	atomic.StoreUint64(&tikv.CommitMaxBackoff, uint64(parseDuration(cfg.TiKVClient.CommitTimeout).Seconds()*1000))
+	tikv.RegionCacheTTLSec = int64(cfg.TiKVClient.RegionCacheTTL)
 
 	return nil
 }
@@ -316,6 +323,7 @@ func (t *TiDBServer) cleanup(graceful bool) {
 }
 
 func (t *TiDBServer) setupLog() error {
+	t.cfg.Log.Level = "warn"
 	if err := logutil.InitZapLogger(t.cfg.Log.ToLogConfig()); err != nil {
 		return err
 	}
@@ -334,7 +342,7 @@ func (t *TiDBServer) setupLog() error {
  */
 
 func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
-	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
+	err := kv.RunInNewTxn(context.TODO(), t.storage, true, func(ctx context.Context, txn kv.Transaction) error {
 		t := meta.NewMeta(txn)
 		var err1 error
 		originDBs, err1 := t.ListDatabases()
@@ -369,7 +377,7 @@ func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 				if autoID > 1 {
 					autoID = autoID - 1
 				}
-				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, autoID); err1 != nil {
+				if err1 = t.CreateTableAndSetAutoID(newDB.ID, newTable, autoID, 0); err1 != nil {
 					return errors.Trace(err1)
 				}
 			}
